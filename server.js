@@ -1,21 +1,28 @@
 const express = require("express");
-const socket = require("socket.io");
+const sock = require("socket.io");
 const app = express();
 const WebSocket = require("ws");
-const source = new WebSocket("wss://ws.finnhub.io?token=bu0plmf48v6v4d3lelog");
-
-// Connection opened -> Subscribe
-source.addEventListener("open", function (event) {
- /* source.send(JSON.stringify({ type: "subscribe", symbol: "BINANCE:BTCUSDT" })); */  //BINANCE:BTCUSDT
-   /* source.send(JSON.stringify({ type: "subscribe", symbol: "BINANCE:BNBBTC" })); */
-  source.send(JSON.stringify({ type: "subscribe", symbol: "OANDA:NATGAS_USD" }));
-});
 
 const server = app.listen(4000);
-const io = socket(server);
+const io = sock(server);
 
-io.on("connection", (socket) => {
-    console.log("Connected....");
+const one = io.of("/Binance_BNBBTC");
+const two = io.of("/Binance_BTCUSDT");
+
+//Connection for entity one
+one.on("connection", (socket) => {
+  const source = new WebSocket("wss://ws.finnhub.io?token=bu0plmf48v6v4d3lelog");
+  // Connection opened -> Subscribe
+  source.addEventListener("open", function (event) {
+    //Alternate subscriptions if data of the current crypto is not available
+    /* source.send(JSON.stringify({ type: "subscribe", symbol: "BINANCE:BTCUSDT" })); */ 
+    /* source.send(JSON.stringify({ type: "subscribe", symbol: "BINANCE:BNBBTC" })); */
+    source.send(
+      JSON.stringify({ type: "subscribe", symbol: "BINANCE:BNBBTC" })
+    );
+  });
+
+  console.log("Connected one....");
   // Listen for messages
   let interval;
 
@@ -23,18 +30,56 @@ io.on("connection", (socket) => {
     if (interval) {
       clearInterval(interval);
     }
-    interval = setInterval(
-      () => {
-          io.sockets.emit('stock', event.data);
-          console.log('Message from server ', event.data);
-      },
-      2000
+    interval = setInterval(() => {
+      let temp = JSON.parse(event.data);
+      if (temp.type === "trade") {
+        one.emit("stock", event.data);
+        console.log("Message from server ", temp.data);
+        console.log("Date ", new Date(temp.data[0].t).toTimeString());
+      }
+    }, 5000);
+  });
+  socket.on('disconnect', () => {
+    console.log("disconnected one...");
+    source.send(JSON.stringify({ type: "unsubscribe", symbol: "BINANCE:BNBBTC" }));
+    source.close();
+  });
+});
+
+
+//Connection for entity two
+two.on("connection", (socket) => {
+  const source = new WebSocket("wss://ws.finnhub.io?token=bu0plmf48v6v4d3lelog");
+  // Connection opened -> Subscribe
+  source.addEventListener("open", function (event) {
+    //Alternate subscriptions if data of the current crypto is not available
+    /* source.send(JSON.stringify({ type: "subscribe", symbol: "BINANCE:BTCUSDT" })); */ //BINANCE:BTCUSDT
+    /* source.send(JSON.stringify({ type: "subscribe", symbol: "BINANCE:BNBBTC" })); */
+    source.send(
+      JSON.stringify({ type: "subscribe", symbol: "BINANCE:BTCUSDT" })
     );
-    //console.log('Message from server ', event.data);
   });
 
-  // Unsubscribe
-  var unsubscribe = function (symbol) {
-    source.send(JSON.stringify({ type: "unsubscribe", symbol: symbol }));
-  };
+  console.log("Connected two....");
+  // Listen for messages
+  let interval;
+
+  source.addEventListener("message", function (event) {
+    if (interval) {
+      clearInterval(interval);
+    }
+    interval = setInterval(() => {
+      let temp = JSON.parse(event.data);
+      if (temp.type === "trade") {
+        two.emit("stock", event.data);
+        console.log("Message from server ", temp.data);
+        console.log("Date ", new Date(temp.data[0].t).toTimeString());
+      }
+    }, 5000);
+  });
+  socket.on('disconnect', () => {
+    console.log("disconnected two...");
+    source.send(JSON.stringify({ type: "unsubscribe", symbol: "BINANCE:BNBBTC" }));
+    source.close();
+  });
 });
